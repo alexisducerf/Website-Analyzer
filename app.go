@@ -69,10 +69,10 @@ func (a *App) StopCrawl() {
 }
 
 // ExportCSV saves the given CSV data to a file selected by the user
-func (a *App) ExportCSV(data string) error {
+func (a *App) ExportCSV(defaultFilename string, data string) error {
 	filePath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export Audit",
-		DefaultFilename: "seo_audit.csv",
+		DefaultFilename: defaultFilename,
 		Filters: []runtime.FileFilter{
 			{
 				DisplayName: "CSV Files (*.csv)",

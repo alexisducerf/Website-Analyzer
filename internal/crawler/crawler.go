@@ -12,15 +12,27 @@ import (
 	"golang.org/x/net/html"
 )
 
+// ImageInfo represents data about an image on a page
+type ImageInfo struct {
+	Src string `json:"src"`
+	Alt string `json:"alt"`
+}
+
 // PageInfo represents data about a crawled page
 type PageInfo struct {
-	URL         string `json:"url"`
-	Status      int    `json:"status"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	H1          string `json:"h1"`
-	WordCount   int    `json:"wordCount"`
-	Error       string `json:"error,omitempty"`
+	URL           string              `json:"url"`
+	Status        int                 `json:"status"`
+	Title         string              `json:"title"`
+	Description   string              `json:"description"`
+	H1            string              `json:"h1"`
+	WordCount     int                 `json:"wordCount"`
+	Canonical     string              `json:"canonical"`
+	Robots        string              `json:"robots"`
+	LinksInternal []string            `json:"linksInternal"`
+	LinksExternal []string            `json:"linksExternal"`
+	Headers       map[string][]string `json:"headers"`
+	Images        []ImageInfo         `json:"images"`
+	Error         string              `json:"error,omitempty"`
 }
 
 // Crawler handles the asynchronous crawling of a website
@@ -140,6 +152,12 @@ func (c *Crawler) crawlPage(ctx context.Context, pageURL string, queue chan stri
 		info.Description = seoInfo.Description
 		info.H1 = seoInfo.H1
 		info.WordCount = seoInfo.WordCount
+		info.Canonical = seoInfo.Canonical
+		info.Robots = seoInfo.Robots
+		info.Headers = seoInfo.Headers
+		info.Images = seoInfo.Images
+		info.LinksInternal = seoInfo.LinksInternal
+		info.LinksExternal = seoInfo.LinksExternal
 
 		for _, link := range links {
 			if c.shouldCrawl(link) {
@@ -176,7 +194,9 @@ func (c *Crawler) shouldCrawl(link string) bool {
 func (c *Crawler) parse(resp *http.Response) ([]string, PageInfo) {
 	var links []string
 	var info PageInfo
-	var inTitle, inH1 bool
+	info.Headers = make(map[string][]string)
+
+	var inTitle, inH1, inH2, inH3, inH4, inH5, inH6 bool
 
 	z := html.NewTokenizer(resp.Body)
 	for {
@@ -185,17 +205,39 @@ func (c *Crawler) parse(resp *http.Response) ([]string, PageInfo) {
 		case html.ErrorToken:
 			return links, info
 		case html.TextToken:
-			if inTitle {
-				info.Title = strings.TrimSpace(z.Token().Data)
-			}
-			if inH1 && info.H1 == "" {
-				info.H1 = strings.TrimSpace(z.Token().Data)
-			}
-			// Simple word count
 			text := strings.TrimSpace(z.Token().Data)
-			if text != "" {
-				info.WordCount += len(strings.Fields(text))
+			if text == "" {
+				continue
 			}
+
+			if inTitle {
+				info.Title = text
+			}
+			if inH1 {
+				if info.H1 == "" {
+					info.H1 = text
+				}
+				info.Headers["h1"] = append(info.Headers["h1"], text)
+			}
+			if inH2 {
+				info.Headers["h2"] = append(info.Headers["h2"], text)
+			}
+			if inH3 {
+				info.Headers["h3"] = append(info.Headers["h3"], text)
+			}
+			if inH4 {
+				info.Headers["h4"] = append(info.Headers["h4"], text)
+			}
+			if inH5 {
+				info.Headers["h5"] = append(info.Headers["h5"], text)
+			}
+			if inH6 {
+				info.Headers["h6"] = append(info.Headers["h6"], text)
+			}
+
+			// Simple word count (approximated)
+			info.WordCount += len(strings.Fields(text))
+
 		case html.StartTagToken, html.SelfClosingTagToken:
 			t := z.Token()
 			if t.Data == "a" {
@@ -208,10 +250,27 @@ func (c *Crawler) parse(resp *http.Response) ([]string, PageInfo) {
 
 						absURL := c.resolveURL(val)
 						if absURL != "" {
-							links = append(links, absURL)
+							if c.shouldCrawl(absURL) {
+								info.LinksInternal = append(info.LinksInternal, absURL)
+								links = append(links, absURL)
+							} else {
+								info.LinksExternal = append(info.LinksExternal, absURL)
+							}
 						}
 					}
 				}
+			}
+			if t.Data == "img" {
+				var src, alt string
+				for _, a := range t.Attr {
+					if a.Key == "src" {
+						src = a.Val
+					}
+					if a.Key == "alt" {
+						alt = a.Val
+					}
+				}
+				info.Images = append(info.Images, ImageInfo{Src: src, Alt: alt})
 			}
 			if t.Data == "title" {
 				inTitle = true
@@ -219,6 +278,22 @@ func (c *Crawler) parse(resp *http.Response) ([]string, PageInfo) {
 			if t.Data == "h1" {
 				inH1 = true
 			}
+			if t.Data == "h2" {
+				inH2 = true
+			}
+			if t.Data == "h3" {
+				inH3 = true
+			}
+			if t.Data == "h4" {
+				inH4 = true
+			}
+			if t.Data == "h5" {
+				inH5 = true
+			}
+			if t.Data == "h6" {
+				inH6 = true
+			}
+
 			if t.Data == "meta" {
 				var name, content string
 				for _, a := range t.Attr {
@@ -232,6 +307,23 @@ func (c *Crawler) parse(resp *http.Response) ([]string, PageInfo) {
 				if name == "description" {
 					info.Description = content
 				}
+				if name == "robots" {
+					info.Robots = content
+				}
+			}
+			if t.Data == "link" {
+				var rel, href string
+				for _, a := range t.Attr {
+					if a.Key == "rel" {
+						rel = strings.ToLower(a.Val)
+					}
+					if a.Key == "href" {
+						href = a.Val
+					}
+				}
+				if rel == "canonical" {
+					info.Canonical = href
+				}
 			}
 		case html.EndTagToken:
 			t := z.Token()
@@ -240,6 +332,21 @@ func (c *Crawler) parse(resp *http.Response) ([]string, PageInfo) {
 			}
 			if t.Data == "h1" {
 				inH1 = false
+			}
+			if t.Data == "h2" {
+				inH2 = false
+			}
+			if t.Data == "h3" {
+				inH3 = false
+			}
+			if t.Data == "h4" {
+				inH4 = false
+			}
+			if t.Data == "h5" {
+				inH5 = false
+			}
+			if t.Data == "h6" {
+				inH6 = false
 			}
 		}
 	}

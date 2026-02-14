@@ -6,8 +6,8 @@ export function CrawlWebsite(arg1, arg2, arg3) {
   return window['go']['main']['App']['CrawlWebsite'](arg1, arg2, arg3);
 }
 
-export function ExportCSV(arg1) {
-  return window['go']['main']['App']['ExportCSV'](arg1);
+export function ExportCSV(arg1, arg2) {
+  return window['go']['main']['App']['ExportCSV'](arg1, arg2);
 }
 
 export function Greet(arg1) {

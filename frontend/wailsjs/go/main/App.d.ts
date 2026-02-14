@@ -3,7 +3,7 @@
 
 export function CrawlWebsite(arg1:string,arg2:number,arg3:number):Promise<void>;
 
-export function ExportCSV(arg1:string):Promise<void>;
+export function ExportCSV(arg1:string,arg2:string):Promise<void>;
 
 export function Greet(arg1:string):Promise<string>;
 

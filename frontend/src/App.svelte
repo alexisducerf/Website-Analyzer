@@ -15,6 +15,41 @@
   let expandedRows = new Set();
   let filter = "all";
   let searchQuery = "";
+  let activeDetailTab = "overview";
+
+  function analyzeSEO(page) {
+    const issues = [];
+    if (!page.title) issues.push({ level: "error", message: "Missing Title" });
+    else if (page.title.length < 10)
+      issues.push({ level: "warning", message: "Title too short (<10 chars)" });
+    else if (page.title.length > 60)
+      issues.push({ level: "warning", message: "Title too long (>60 chars)" });
+
+    if (!page.description)
+      issues.push({ level: "error", message: "Missing Meta Description" });
+    else if (page.description.length < 50)
+      issues.push({
+        level: "warning",
+        message: "Description too short (<50 chars)",
+      });
+    else if (page.description.length > 160)
+      issues.push({
+        level: "warning",
+        message: "Description too long (>160 chars)",
+      });
+
+    if (!page.h1) issues.push({ level: "error", message: "Missing H1 Header" });
+
+    if (page.images) {
+      const missingAlt = page.images.filter((img) => !img.alt).length;
+      if (missingAlt > 0)
+        issues.push({
+          level: "warning",
+          message: `${missingAlt} images missing Alt text`,
+        });
+    }
+    return issues;
+  }
 
   let stats = {
     discovered: 0,
@@ -77,6 +112,16 @@
       "Description",
       "H1",
       "Word Count",
+      "Canonical",
+      "Robots",
+      "Internal Links",
+      "External Links",
+      "Images",
+      "All H1s",
+      "All H2s",
+      "All H3s",
+      "Internal Links List",
+      "External Links List",
     ];
     const rows = pages.map((p) => [
       p.url,
@@ -85,10 +130,31 @@
       `"${(p.description || "").replace(/"/g, '""')}"`,
       `"${(p.h1 || "").replace(/"/g, '""')}"`,
       p.wordCount,
+      `"${(p.canonical || "").replace(/"/g, '""')}"`,
+      `"${(p.robots || "").replace(/"/g, '""')}"`,
+      p.linksInternal ? p.linksInternal.length : 0,
+      p.linksExternal ? p.linksExternal.length : 0,
+      p.images ? p.images.length : 0,
+      `"${(p.headers && p.headers["h1"] ? p.headers["h1"].join(" | ") : "").replace(/"/g, '""')}"`,
+      `"${(p.headers && p.headers["h2"] ? p.headers["h2"].join(" | ") : "").replace(/"/g, '""')}"`,
+      `"${(p.headers && p.headers["h3"] ? p.headers["h3"].join(" | ") : "").replace(/"/g, '""')}"`,
+      `"${(p.linksInternal ? p.linksInternal.join(" | ") : "").replace(/"/g, '""')}"`,
+      `"${(p.linksExternal ? p.linksExternal.join(" | ") : "").replace(/"/g, '""')}"`,
     ]);
     const csvContent = [headers, ...rows].map((e) => e.join(",")).join("\n");
 
-    ExportCSV(csvContent).then((err) => {
+    // Generate filename: domain_datetime.csv
+    let domain = "scan";
+    try {
+      const u = new URL(url);
+      domain = u.hostname.replace(/www\./, "");
+    } catch (e) {}
+
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const filename = `${domain}_${timestamp}.csv`;
+
+    ExportCSV(filename, csvContent).then((err) => {
       if (err) {
         alert("Failed to export: " + err);
       }
@@ -322,40 +388,216 @@
                 <tr class="details-row">
                   <td colspan="4">
                     <div class="detail-pane">
-                      <div class="field-v2">
-                        <span class="field-v2-label">Page Title</span>
-                        <span class="field-v2-value"
-                          >{page.title || "No title found"}</span
+                      <div
+                        class="tabs"
+                        style="margin-bottom: 1rem; border-color: rgba(255,255,255,0.1);"
+                      >
+                        <button
+                          class="tab {activeDetailTab === 'overview'
+                            ? 'active'
+                            : ''}"
+                          on:click={() => (activeDetailTab = "overview")}
+                          >Overview</button
+                        >
+                        <button
+                          class="tab {activeDetailTab === 'issues'
+                            ? 'active'
+                            : ''}"
+                          on:click={() => (activeDetailTab = "issues")}
+                          >Issues ({analyzeSEO(page).length})</button
+                        >
+                        <button
+                          class="tab {activeDetailTab === 'headers'
+                            ? 'active'
+                            : ''}"
+                          on:click={() => (activeDetailTab = "headers")}
+                          >Headers</button
+                        >
+                        <button
+                          class="tab {activeDetailTab === 'images'
+                            ? 'active'
+                            : ''}"
+                          on:click={() => (activeDetailTab = "images")}
+                          >Images</button
+                        >
+                        <button
+                          class="tab {activeDetailTab === 'links'
+                            ? 'active'
+                            : ''}"
+                          on:click={() => (activeDetailTab = "links")}
+                          >Links</button
                         >
                       </div>
-                      <div class="field-v2">
-                        <span class="field-v2-label">H1 Header</span>
-                        <span class="field-v2-value"
-                          >{page.h1 || "No H1 found"}</span
+
+                      {#if activeDetailTab === "overview"}
+                        <div
+                          style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;"
                         >
-                      </div>
-                      <div class="field-v2" style="grid-column: span 2">
-                        <span class="field-v2-label">Meta Description</span>
-                        <span class="field-v2-value"
-                          >{page.description || "No description found"}</span
+                          <div class="field-v2">
+                            <span class="field-v2-label">Page Title</span>
+                            <span class="field-v2-value"
+                              >{page.title || "No title found"}</span
+                            >
+                          </div>
+                          <div class="field-v2">
+                            <span class="field-v2-label">H1 Header</span>
+                            <span class="field-v2-value"
+                              >{page.h1 || "No H1 found"}</span
+                            >
+                          </div>
+                          <div class="field-v2" style="grid-column: span 2">
+                            <span class="field-v2-label">Meta Description</span>
+                            <span class="field-v2-value"
+                              >{page.description ||
+                                "No description found"}</span
+                            >
+                          </div>
+                          <div class="field-v2">
+                            <span class="field-v2-label">Word Count</span>
+                            <span class="field-v2-value"
+                              >{page.wordCount} words</span
+                            >
+                          </div>
+                          <div class="field-v2">
+                            <span class="field-v2-label">Canonical</span>
+                            <span
+                              class="field-v2-value"
+                              style="font-size: 0.75rem;"
+                              >{page.canonical || "-"}</span
+                            >
+                          </div>
+                          <div class="field-v2">
+                            <span class="field-v2-label">Robots</span>
+                            <span class="field-v2-value"
+                              >{page.robots || "-"}</span
+                            >
+                          </div>
+                        </div>
+                      {/if}
+
+                      {#if activeDetailTab === "issues"}
+                        <div class="issues-list">
+                          {#each analyzeSEO(page) as issue}
+                            <div class="issue-item {issue.level}">
+                              <span
+                                class="badge-v2 {issue.level === 'error'
+                                  ? 'badge-error'
+                                  : 'badge-warning'}">{issue.level}</span
+                              >
+                              <span>{issue.message}</span>
+                            </div>
+                          {/each}
+                          {#if analyzeSEO(page).length === 0}
+                            <div
+                              style="text-align: center; color: var(--success); padding: 1rem;"
+                            >
+                              No SEO issues found! 🎉
+                            </div>
+                          {/if}
+                        </div>
+                      {/if}
+
+                      {#if activeDetailTab === "headers"}
+                        <div
+                          style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto;"
                         >
-                      </div>
-                      <div class="field-v2">
-                        <span class="field-v2-label">Word Count</span>
-                        <span class="field-v2-value"
-                          >{page.wordCount} words</span
+                          {#if page.headers}
+                            {#each ["h1", "h2", "h3", "h4", "h5", "h6"] as tag}
+                              {#if page.headers[tag]}
+                                {#each page.headers[tag] as text}
+                                  <div class="header-item tag-{tag}">
+                                    <span class="tag-badge"
+                                      >{tag.toUpperCase()}</span
+                                    >
+                                    <span>{text}</span>
+                                  </div>
+                                {/each}
+                              {/if}
+                            {/each}
+                          {:else}
+                            <div style="color: var(--text-dim);">
+                              No headers data available
+                            </div>
+                          {/if}
+                        </div>
+                      {/if}
+
+                      {#if activeDetailTab === "images"}
+                        <div style="max-height: 300px; overflow-y: auto;">
+                          {#if page.images && page.images.length > 0}
+                            <table class="table-v2" style="font-size: 0.8rem;">
+                              <thead><th>Preview</th><th>Alt Text</th></thead>
+                              <tbody>
+                                {#each page.images as img}
+                                  <tr>
+                                    <td
+                                      ><div
+                                        style="width: 40px; height: 40px; overflow: hidden; border-radius: 4px; background: #000;"
+                                      >
+                                        <img
+                                          src={img.src}
+                                          alt="thumbnail"
+                                          style="width: 100%; height: 100%; object-fit: cover;"
+                                          onerror="this.src='data:image/svg+xml;base64,...'"
+                                        />
+                                      </div></td
+                                    >
+                                    <td
+                                      style="color: {img.alt
+                                        ? 'inherit'
+                                        : 'var(--error)'}"
+                                      >{img.alt || "MISSING ALT"}</td
+                                    >
+                                  </tr>
+                                {/each}
+                              </tbody>
+                            </table>
+                          {:else}
+                            <div style="color: var(--text-dim);">
+                              No images found
+                            </div>
+                          {/if}
+                        </div>
+                      {/if}
+
+                      {#if activeDetailTab === "links"}
+                        <div
+                          style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;"
                         >
-                      </div>
-                      {#if page.error}
-                        <div class="field-v2" style="grid-column: span 2">
-                          <span
-                            class="field-v2-label"
-                            style="color: var(--error)">Error Report</span
+                          <div
+                            class="card stat-v2 link-list-container"
+                            style="background: rgba(0,0,0,0.2);"
                           >
-                          <span
-                            class="field-v2-value"
-                            style="color: var(--error)">{page.error}</span
+                            <div class="stat-v2-label">
+                              Internal Links ({page.linksInternal
+                                ? page.linksInternal.length
+                                : 0})
+                            </div>
+                            <div class="link-scroller">
+                              {#if page.linksInternal}
+                                {#each page.linksInternal as link}
+                                  <div class="link-item">{link}</div>
+                                {/each}
+                              {/if}
+                            </div>
+                          </div>
+                          <div
+                            class="card stat-v2 link-list-container"
+                            style="background: rgba(0,0,0,0.2);"
                           >
+                            <div class="stat-v2-label">
+                              External Links ({page.linksExternal
+                                ? page.linksExternal.length
+                                : 0})
+                            </div>
+                            <div class="link-scroller">
+                              {#if page.linksExternal}
+                                {#each page.linksExternal as link}
+                                  <div class="link-item external">{link}</div>
+                                {/each}
+                              {/if}
+                            </div>
+                          </div>
                         </div>
                       {/if}
                     </div>
