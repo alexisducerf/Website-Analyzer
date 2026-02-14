@@ -1,5 +1,7 @@
 # README
 
+[![Latest Release](https://img.shields.io/github/v/release/alexisducerf/web-seo?label=Latest%20Release&style=for-the-badge)](https://github.com/alexisducerf/web-seo/releases/latest)
+
 ## About
 
 This is the official Wails Svelte template.

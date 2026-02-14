@@ -36,15 +36,27 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
       - name: Build Application
         shell: bash
         run: |
           wails build -platform ${{ matrix.os == 'windows-latest' && 'windows/amd64' || (matrix.os == 'macos-latest' && 'darwin/universal' || 'linux/amd64') }}
 
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Compress Archives
+        shell: bash
+        run: |
+          mkdir -p releases
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cd build/bin && 7z a -tzip "../../releases/web-seo-windows-amd64.zip" web-seo.exe
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            cd build/bin && zip -r "../../releases/web-seo-macos-universal.zip" web-seo.app
+          else
+            cd build/bin && zip -r "../../releases/web-seo-linux-amd64.zip" web-seo
+          fi
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: web-seo-${{ matrix.os }}
-          path: build/bin/*
+          files: releases/*
