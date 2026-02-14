@@ -1,14 +1,20 @@
 <script>
   import { onMount } from "svelte";
-  import { CrawlWebsite, StopCrawl } from "../wailsjs/go/main/App.js";
+  import {
+    CrawlWebsite,
+    StopCrawl,
+    ExportCSV,
+  } from "../wailsjs/go/main/App.js";
   import { EventsOn } from "../wailsjs/runtime/runtime.js";
 
-  let url = "https://wails.io";
+  let url = "";
   let concurrency = 5;
+  let delay = 0;
   let isCrawling = false;
   let pages = [];
   let expandedRows = new Set();
   let filter = "all";
+  let searchQuery = "";
 
   let stats = {
     discovered: 0,
@@ -45,7 +51,7 @@
     expandedRows = new Set();
     stats = { discovered: 0, success: 0, error: 0, totalWords: 0 };
     isCrawling = true;
-    CrawlWebsite(url, parseInt(concurrency));
+    CrawlWebsite(url, parseInt(concurrency), parseInt(delay));
   }
 
   function stopCrawl() {
@@ -81,20 +87,24 @@
       p.wordCount,
     ]);
     const csvContent = [headers, ...rows].map((e) => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const downloadUrl = URL.createObjectURL(blob);
-    link.setAttribute("href", downloadUrl);
-    link.setAttribute(
-      "download",
-      `seo_audit_${new Date().toISOString().split("T")[0]}.csv`,
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+
+    ExportCSV(csvContent).then((err) => {
+      if (err) {
+        alert("Failed to export: " + err);
+      }
+    });
   }
 
   $: filteredPages = pages.filter((p) => {
+    // Filter by Search Query
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const matchUrl = p.url.toLowerCase().includes(q);
+      const matchTitle = (p.title || "").toLowerCase().includes(q);
+      if (!matchUrl && !matchTitle) return false;
+    }
+
+    // Filter by Status Tab
     if (filter === "all") return true;
     if (filter === "success") return p.status >= 200 && p.status < 300;
     if (filter === "error") return p.status >= 400 || p.status === 0;
@@ -115,7 +125,7 @@
           class="input-field"
           type="text"
           bind:value={url}
-          placeholder="https://example.com"
+          placeholder="https://website.tld"
           disabled={isCrawling}
         />
       </div>
@@ -132,6 +142,22 @@
           max="20"
           disabled={isCrawling}
           style="width: 100%; accent-color: var(--primary);"
+        />
+      </div>
+
+      <div class="field-v2" style="margin-bottom: 2rem">
+        <label class="field-v2-label" for="delay"
+          >Request Delay ({delay}ms)</label
+        >
+        <input
+          id="delay"
+          type="range"
+          bind:value={delay}
+          min="0"
+          max="2000"
+          step="100"
+          disabled={isCrawling}
+          style="width: 100%; accent-color: var(--secondary);"
         />
       </div>
 
@@ -166,7 +192,7 @@
       {/if}
     </div>
 
-    <div class="sidebar-section" style="margin-top: auto">
+    <div class="sidebar-section">
       <h2>Quick Actions</h2>
       <button
         class="btn btn-outline"
@@ -231,6 +257,16 @@
           class="tab {filter === 'error' ? 'active' : ''}"
           on:click={() => (filter = "error")}>Errors & Issues</button
         >
+      </div>
+
+      <div class="search-bar-container" style="margin-bottom: 1rem;">
+        <input
+          class="input-field"
+          type="text"
+          placeholder="Search items..."
+          bind:value={searchQuery}
+          style="width: 100%;"
+        />
       </div>
 
       <div class="scroll-v2">

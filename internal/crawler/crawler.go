@@ -31,10 +31,11 @@ type Crawler struct {
 	visitedLock sync.Mutex
 	Results     chan PageInfo
 	Concurrency int
+	Delay       time.Duration
 }
 
 // NewCrawler creates a new Crawler instance
-func NewCrawler(startURL string, concurrency int) (*Crawler, error) {
+func NewCrawler(startURL string, concurrency int, delayMs int) (*Crawler, error) {
 	parsedURL, err := url.Parse(startURL)
 	if err != nil {
 		return nil, err
@@ -49,6 +50,7 @@ func NewCrawler(startURL string, concurrency int) (*Crawler, error) {
 		Visited:     make(map[string]bool),
 		Results:     make(chan PageInfo, 100),
 		Concurrency: concurrency,
+		Delay:       time.Duration(delayMs) * time.Millisecond,
 	}, nil
 }
 
@@ -104,6 +106,11 @@ func (c *Crawler) crawlPage(ctx context.Context, pageURL string, queue chan stri
 	}
 	c.Visited[pageURL] = true
 	c.visitedLock.Unlock()
+
+	// Rate limiting
+	if c.Delay > 0 {
+		time.Sleep(c.Delay)
+	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, "GET", pageURL, nil)
