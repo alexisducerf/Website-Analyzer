@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build for ${{ matrix.os }}
@@ -41,7 +44,13 @@ jobs:
       - name: Build Application
         shell: bash
         run: |
-          wails build -platform ${{ matrix.os == 'windows-latest' && 'windows/amd64' || (matrix.os == 'macos-latest' && 'darwin/universal' || 'linux/amd64') }}
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            wails build -platform windows/amd64
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            wails build -platform darwin/universal
+          else
+            wails build -platform linux/amd64 -tags webkit2gtk_4_1
+          fi
 
       - name: Compress Archives
         shell: bash
