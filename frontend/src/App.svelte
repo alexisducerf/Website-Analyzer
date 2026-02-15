@@ -8,8 +8,8 @@
   import { EventsOn } from "../wailsjs/runtime/runtime.js";
 
   let url = "";
-  let concurrency = 5;
-  let delay = 0;
+  let concurrency = 3;
+  let delay = 1000;
   let isCrawling = false;
   let pages = [];
   let expandedRows = new Set();
@@ -122,25 +122,41 @@
       "All H3s",
       "Internal Links List",
       "External Links List",
+      "SEO Errors",
+      "SEO Warnings",
     ];
-    const rows = pages.map((p) => [
-      p.url,
-      p.status,
-      `"${(p.title || "").replace(/"/g, '""')}"`,
-      `"${(p.description || "").replace(/"/g, '""')}"`,
-      `"${(p.h1 || "").replace(/"/g, '""')}"`,
-      p.wordCount,
-      `"${(p.canonical || "").replace(/"/g, '""')}"`,
-      `"${(p.robots || "").replace(/"/g, '""')}"`,
-      p.linksInternal ? p.linksInternal.length : 0,
-      p.linksExternal ? p.linksExternal.length : 0,
-      p.images ? p.images.length : 0,
-      `"${(p.headers && p.headers["h1"] ? p.headers["h1"].join(" | ") : "").replace(/"/g, '""')}"`,
-      `"${(p.headers && p.headers["h2"] ? p.headers["h2"].join(" | ") : "").replace(/"/g, '""')}"`,
-      `"${(p.headers && p.headers["h3"] ? p.headers["h3"].join(" | ") : "").replace(/"/g, '""')}"`,
-      `"${(p.linksInternal ? p.linksInternal.join(" | ") : "").replace(/"/g, '""')}"`,
-      `"${(p.linksExternal ? p.linksExternal.join(" | ") : "").replace(/"/g, '""')}"`,
-    ]);
+    const rows = pages.map((p) => {
+      const issues = analyzeSEO(p);
+      const errors = issues
+        .filter((i) => i.level === "error")
+        .map((i) => i.message)
+        .join(" | ");
+      const warnings = issues
+        .filter((i) => i.level === "warning")
+        .map((i) => i.message)
+        .join(" | ");
+
+      return [
+        p.url,
+        p.status,
+        `"${(p.title || "").replace(/"/g, '""')}"`,
+        `"${(p.description || "").replace(/"/g, '""')}"`,
+        `"${(p.h1 || "").replace(/"/g, '""')}"`,
+        p.wordCount,
+        `"${(p.canonical || "").replace(/"/g, '""')}"`,
+        `"${(p.robots || "").replace(/"/g, '""')}"`,
+        p.linksInternal ? p.linksInternal.length : 0,
+        p.linksExternal ? p.linksExternal.length : 0,
+        p.images ? p.images.length : 0,
+        `"${(p.headers && p.headers["h1"] ? p.headers["h1"].join(" | ") : "").replace(/"/g, '""')}"`,
+        `"${(p.headers && p.headers["h2"] ? p.headers["h2"].join(" | ") : "").replace(/"/g, '""')}"`,
+        `"${(p.headers && p.headers["h3"] ? p.headers["h3"].join(" | ") : "").replace(/"/g, '""')}"`,
+        `"${(p.linksInternal ? p.linksInternal.join(" | ") : "").replace(/"/g, '""')}"`,
+        `"${(p.linksExternal ? p.linksExternal.join(" | ") : "").replace(/"/g, '""')}"`,
+        `"${errors.replace(/"/g, '""')}"`,
+        `"${warnings.replace(/"/g, '""')}"`,
+      ];
+    });
     const csvContent = [headers, ...rows].map((e) => e.join(",")).join("\n");
 
     // Generate filename: domain_datetime.csv
@@ -161,6 +177,17 @@
     });
   }
 
+  let isSidebarOpen = true;
+
+  function toggleSidebar() {
+    isSidebarOpen = !isSidebarOpen;
+  }
+
+  // Helper to filter issues for the "SEO Errors" tab
+  function getSeoErrors(page) {
+    return analyzeSEO(page).filter((issue) => issue.level === "error");
+  }
+
   $: filteredPages = pages.filter((p) => {
     // Filter by Search Query
     if (searchQuery) {
@@ -174,96 +201,149 @@
     if (filter === "all") return true;
     if (filter === "success") return p.status >= 200 && p.status < 300;
     if (filter === "error") return p.status >= 400 || p.status === 0;
+    if (filter === "seo-issues") return analyzeSEO(p).length > 0;
     return true;
   });
 </script>
 
-<div class="app-container">
+<div class="app-container {isSidebarOpen ? '' : 'sidebar-closed'}">
   <aside class="sidebar">
-    <h1>SEO Spider</h1>
-
-    <div class="sidebar-section">
-      <h2>Configurations</h2>
-      <div class="field-v2" style="margin-bottom: 1.5rem">
-        <label class="field-v2-label" for="target-url">Target URL</label>
-        <input
-          id="target-url"
-          class="input-field"
-          type="text"
-          bind:value={url}
-          placeholder="https://website.tld"
-          disabled={isCrawling}
-        />
-      </div>
-
-      <div class="field-v2" style="margin-bottom: 2rem">
-        <label class="field-v2-label" for="concurrency"
-          >Concurrency ({concurrency})</label
-        >
-        <input
-          id="concurrency"
-          type="range"
-          bind:value={concurrency}
-          min="1"
-          max="20"
-          disabled={isCrawling}
-          style="width: 100%; accent-color: var(--primary);"
-        />
-      </div>
-
-      <div class="field-v2" style="margin-bottom: 2rem">
-        <label class="field-v2-label" for="delay"
-          >Request Delay ({delay}ms)</label
-        >
-        <input
-          id="delay"
-          type="range"
-          bind:value={delay}
-          min="0"
-          max="2000"
-          step="100"
-          disabled={isCrawling}
-          style="width: 100%; accent-color: var(--secondary);"
-        />
-      </div>
-
-      {#if !isCrawling}
-        <button class="btn btn-primary" on:click={startCrawl} disabled={!url}>
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3" /></svg
-          >
-          Start Audit
-        </button>
-      {:else}
-        <button class="btn btn-stop" on:click={stopCrawl}>
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            ><rect x="4" y="4" width="16" height="16" rx="2" ry="2" /></svg
-          >
-          Stop Crawl
-        </button>
-        <div class="progress-container">
-          <div class="progress-bar" style="width: {concurrency * 5}%"></div>
-        </div>
+    <div
+      class="sidebar-header"
+      style={!isSidebarOpen ? "justify-content: center;" : ""}
+    >
+      {#if isSidebarOpen}
+        <h1 style="margin: 0; font-size: 1.5rem;">Website Analyzer</h1>
       {/if}
+      <button
+        class="btn-icon"
+        on:click={toggleSidebar}
+        title={isSidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+      >
+        {#if isSidebarOpen}
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            ><line x1="18" y1="6" x2="6" y2="18"></line><line
+              x1="6"
+              y1="6"
+              x2="18"
+              y2="18"
+            ></line></svg
+          >
+        {:else}
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            ><line x1="3" y1="12" x2="21" y2="12"></line><line
+              x1="3"
+              y1="6"
+              x2="21"
+              y2="6"
+            ></line><line x1="3" y1="18" x2="21" y2="18"></line></svg
+          >
+        {/if}
+      </button>
     </div>
 
-    <div class="sidebar-section">
-      <h2>Quick Actions</h2>
+    {#if isSidebarOpen}
+      <div class="sidebar-section">
+        <h2>Configurations</h2>
+        <div class="field-v2" style="margin-bottom: 1.5rem">
+          <label class="field-v2-label" for="target-url">Target URL</label>
+          <input
+            id="target-url"
+            class="input-field"
+            type="text"
+            bind:value={url}
+            placeholder="https://website.tld"
+            disabled={isCrawling}
+          />
+        </div>
+
+        <div class="field-v2" style="margin-bottom: 2rem">
+          <label class="field-v2-label" for="concurrency"
+            >Concurrency ({concurrency})</label
+          >
+          <input
+            id="concurrency"
+            type="range"
+            bind:value={concurrency}
+            min="1"
+            max="20"
+            disabled={isCrawling}
+            style="width: 100%; accent-color: var(--primary);"
+          />
+        </div>
+
+        <div class="field-v2" style="margin-bottom: 2rem">
+          <label class="field-v2-label" for="delay"
+            >Request Delay ({delay}ms)</label
+          >
+          <input
+            id="delay"
+            type="range"
+            bind:value={delay}
+            min="0"
+            max="2000"
+            step="100"
+            disabled={isCrawling}
+            style="width: 100%; accent-color: var(--secondary);"
+          />
+        </div>
+
+        {#if !isCrawling}
+          <button class="btn btn-primary" on:click={startCrawl} disabled={!url}>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3" /></svg
+            >
+            Start Audit
+          </button>
+        {:else}
+          <button class="btn btn-stop" on:click={stopCrawl}>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              ><rect x="4" y="4" width="16" height="16" rx="2" ry="2" /></svg
+            >
+            Stop Crawl
+          </button>
+          <div class="progress-container">
+            <div class="progress-bar" style="width: {concurrency * 5}%"></div>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    <div
+      class="sidebar-section"
+      style={!isSidebarOpen
+        ? "margin-top: auto; align-items: center;"
+        : "margin-top: auto;"}
+    >
+      {#if isSidebarOpen}<h2>Quick Actions</h2>{/if}
       <button
-        class="btn btn-outline"
+        class="btn btn-outline {isSidebarOpen ? '' : 'btn-icon-only'}"
         on:click={exportToCSV}
         disabled={pages.length === 0}
+        title="Export Audit"
       >
         <svg
           width="18"
@@ -276,7 +356,7 @@
             points="7 10 12 15 17 10"
           /><line x1="12" y1="15" x2="12" y2="3" /></svg
         >
-        Export Audit
+        {#if isSidebarOpen}Export Audit{/if}
       </button>
     </div>
   </aside>
@@ -323,6 +403,10 @@
           class="tab {filter === 'error' ? 'active' : ''}"
           on:click={() => (filter = "error")}>Errors & Issues</button
         >
+        <button
+          class="tab {filter === 'seo-issues' ? 'active' : ''}"
+          on:click={() => (filter = "seo-issues")}>SEO Issues</button
+        >
       </div>
 
       <div class="search-bar-container" style="margin-bottom: 1rem;">
@@ -341,7 +425,7 @@
             <tr>
               <th style="width: 120px">Status</th>
               <th>Resource URL</th>
-              <th>Meta Title</th>
+              <th>{filter === "seo-issues" ? "Issues" : "Meta Title"}</th>
               <th style="width: 48px"></th>
             </tr>
           </thead>
@@ -367,7 +451,24 @@
                     {page.url}
                   </div>
                 </td>
-                <td style="color: var(--text-muted)">{page.title || "-"}</td>
+                <td style="color: var(--text-muted)">
+                  {#if filter === "seo-issues"}
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                      {#each analyzeSEO(page) as issue}
+                        <span
+                          class="badge-v2 {issue.level === 'error'
+                            ? 'badge-error'
+                            : 'badge-warning'}"
+                          style="font-size: 0.65rem;"
+                        >
+                          {issue.message}
+                        </span>
+                      {/each}
+                    </div>
+                  {:else}
+                    {page.title || "-"}
+                  {/if}
+                </td>
                 <td>
                   <svg
                     width="16"
@@ -407,6 +508,13 @@
                           >Issues ({analyzeSEO(page).length})</button
                         >
                         <button
+                          class="tab {activeDetailTab === 'seo-errors'
+                            ? 'active'
+                            : ''}"
+                          on:click={() => (activeDetailTab = "seo-errors")}
+                          >SEO Errors ({getSeoErrors(page).length})</button
+                        >
+                        <button
                           class="tab {activeDetailTab === 'headers'
                             ? 'active'
                             : ''}"
@@ -431,7 +539,7 @@
 
                       {#if activeDetailTab === "overview"}
                         <div
-                          style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;"
+                          style="display: flex; flex-direction: column; gap: 0.5rem;"
                         >
                           <div class="field-v2">
                             <span class="field-v2-label">Page Title</span>
@@ -445,7 +553,7 @@
                               >{page.h1 || "No H1 found"}</span
                             >
                           </div>
-                          <div class="field-v2" style="grid-column: span 2">
+                          <div class="field-v2">
                             <span class="field-v2-label">Meta Description</span>
                             <span class="field-v2-value"
                               >{page.description ||
@@ -492,6 +600,24 @@
                               style="text-align: center; color: var(--success); padding: 1rem;"
                             >
                               No SEO issues found! 🎉
+                            </div>
+                          {/if}
+                        </div>
+                      {/if}
+
+                      {#if activeDetailTab === "seo-errors"}
+                        <div class="issues-list">
+                          {#each getSeoErrors(page) as issue}
+                            <div class="issue-item error">
+                              <span class="badge-v2 badge-error">error</span>
+                              <span>{issue.message}</span>
+                            </div>
+                          {/each}
+                          {#if getSeoErrors(page).length === 0}
+                            <div
+                              style="text-align: center; color: var(--success); padding: 1rem;"
+                            >
+                              No SEO Critical Errors found! 🎉
                             </div>
                           {/if}
                         </div>
@@ -562,7 +688,7 @@
 
                       {#if activeDetailTab === "links"}
                         <div
-                          style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;"
+                          style="display: flex; flex-direction: column; gap: 1rem;"
                         >
                           <div
                             class="card stat-v2 link-list-container"
@@ -644,10 +770,69 @@
 </div>
 
 <style>
+  .app-container {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    height: 100vh;
+    overflow: hidden;
+    background-color: var(--bg-main);
+    transition: grid-template-columns 0.3s ease;
+  }
+
+  .app-container.sidebar-closed {
+    grid-template-columns: 80px 1fr;
+  }
+
+  .sidebar {
+    background-color: var(--bg-card);
+    border-right: 1px solid var(--border-color);
+    padding: 2rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;
+    overflow-x: hidden;
+    white-space: nowrap;
+  }
+
+  .app-container.sidebar-closed .sidebar {
+    padding: 2rem 0.5rem;
+    align-items: center;
+  }
+
+  .sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    width: 100%;
+  }
+
   .sidebar-section {
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
     margin-bottom: 3rem;
+  }
+
+  .btn-icon {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-icon:hover {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+  }
+
+  .btn-icon-only {
+    padding: 0.75rem !important;
+    justify-content: center !important;
   }
 </style>
