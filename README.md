@@ -1,4 +1,4 @@
-# Web SEO Crawler
+# Website Analyzer - SEO Crawler
 
 https://img.shields.io/github/v/release/alexisducerf/Website-Analyzer?label=Latest%20Release&style=for-the-badge
 
