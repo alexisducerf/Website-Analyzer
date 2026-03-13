@@ -1,6 +1,6 @@
 # Web SEO Crawler
 
-[![Latest Release](https://img.shields.io/github/v/release/alexisducerf/web-seo?label=Latest%20Release&style=for-the-badge)](https://github.com/alexisducerf/web-seo/releases/latest) [![License](https://img.shields.io/github/license/alexisducerf/web-seo?style=for-the-badge)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/alexisducerf/Website-Analyzer?label=Latest%20Release&style=for-the-badge)](https://github.com/alexisducerf/web-seo/releases/latest) [![License](https://img.shields.io/github/license/alexisducerf/Website-Analyzer?style=for-the-badge)](LICENSE)
 
 A high-performance, desktop-based SEO crawler and auditing tool built with **Go (Wails)** and **Svelte**. It provides real-time crawling, detailed on-page analysis, and comprehensive reporting.
 
